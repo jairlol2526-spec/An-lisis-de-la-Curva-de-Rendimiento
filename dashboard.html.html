@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Observatorio de la Curva del Tesoro</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Fuentes Editoriales y Corporativas -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;700&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        editorial: {
+                            bg: '#F7F7F5',       /* Papel / Hueso */
+                            text: '#172033',     /* Texto principal oscuro */
+                            muted: '#667085',    /* Texto secundario */
+                            navy: '#1F3A5F',     /* Azul institucional */
+                            blue: '#56728F',     /* Azul suave */
+                            accent: '#B38B59',   /* Dorado/Camel sutil */
+                            line: '#E6E6E1',     /* Líneas divisorias sutiles */
+                            red: '#A63737',      /* Rojo financiero sobrio */
+                            green: '#2E7D32'     /* Verde financiero sobrio */
+                        }
+                    },
+                    fontFamily: {
+                        serif: ['"Playfair Display"', 'serif'],
+                        sans: ['"Inter"', 'sans-serif'],
+                        mono: ['"JetBrains Mono"', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            background-color: #F7F7F5;
+            color: #172033;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        /* Utilidad para transiciones suaves en números */
+        .fade-update {
+            animation: fadeInOut 0.4s ease-in-out;
+        }
+
+        @keyframes fadeInOut {
+            0% { opacity: 0.5; transform: translateY(2px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Navegación Editorial */
+        .nav-year {
+            position: relative;
+            color: #667085;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+        .nav-year:hover {
+            color: #172033;
+        }
+        .nav-year.active {
+            color: #1F3A5F;
+            font-weight: 600;
+        }
+        .nav-year.active::after {
+            content: '';
+            position: absolute;
+            bottom: -6px;
+            left: 0;
+            width: 100%;
+            height: 1px;
+            background-color: #B38B59;
+        }
+
+        /* Tooltip personalizado de Chart.js (vía CSS no es posible, se hace en JS, pero preparamos el z-index) */
+        canvas {
+            z-index: 10;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col font-sans px-6 py-10 md:px-12 lg:px-20 max-w-[1400px] mx-auto">
+
+    <!-- HEADER EDITORIAL -->
+    <header class="mb-12 border-b border-editorial-line pb-8 flex flex-col md:flex-row md:justify-between md:items-end gap-6">
+        <div>
+            <span class="text-[10px] md:text-xs font-semibold tracking-[0.2em] text-editorial-accent uppercase mb-3 block">
+                Fixed Income / U.S. Treasury
+            </span>
+            <h1 class="font-serif text-4xl md:text-5xl font-semibold tracking-tight text-editorial-text leading-tight">
+                Análisis de la Curva de Rendimiento
+            </h1>
+            <p class="font-sans font-light text-editorial-muted text-lg mt-2">
+                Tesoro de Estados Unidos &middot; 2019 &mdash; marzo 2026
+            </p>
+        </div>
+        <div class="text-left md:text-right">
+            <p class="text-[10px] font-semibold tracking-[0.15em] text-editorial-muted uppercase mb-1">Última Observación</p>
+            <p class="font-mono text-sm font-medium text-editorial-text" id="header-date">31 Mar 2026</p>
+        </div>
+    </header>
+
+    <!-- NAVEGACIÓN TEMPORAL (Editorial Timeline) -->
+    <nav class="mb-16">
+        <ul class="flex flex-wrap items-center gap-x-8 gap-y-4 text-sm md:text-base font-sans tracking-wide" id="timeline-container">
+            <!-- Items generados por JS -->
+        </ul>
+    </nav>
+
+    <!-- CONTENIDO PRINCIPAL -->
+    <main class="grid grid-cols-1 lg:grid-cols-12 gap-16 mb-20">
+        
+        <!-- Columna Izquierda: Gráfico y Ruta Temporal (8/12) -->
+        <section class="lg:col-span-8 flex flex-col">
+            
+            <!-- Ruta Temporal (Números Protagonistas) -->
+            <div class="flex justify-between items-end border-b border-editorial-line pb-6 mb-8 px-2">
+                <!-- 3M -->
+                <div class="text-center group">
+                    <p class="text-xs font-medium text-editorial-muted mb-2 tracking-widest uppercase">3 Meses</p>
+                    <p id="val-3m" class="font-mono text-2xl md:text-3xl text-editorial-text transition-colors group-hover:text-editorial-navy">0.00%</p>
+                </div>
+                <!-- 1Y -->
+                <div class="text-center group">
+                    <p class="text-xs font-medium text-editorial-muted mb-2 tracking-widest uppercase">1 Año</p>
+                    <p id="val-1y" class="font-mono text-2xl md:text-3xl text-editorial-text transition-colors group-hover:text-editorial-navy">0.00%</p>
+                </div>
+                <!-- 5Y -->
+                <div class="text-center group">
+                    <p class="text-xs font-medium text-editorial-muted mb-2 tracking-widest uppercase">5 Años</p>
+                    <p id="val-5y" class="font-mono text-2xl md:text-3xl text-editorial-text transition-colors group-hover:text-editorial-navy">0.00%</p>
+                </div>
+                <!-- 10Y (Benchmark resaltado sutilmente) -->
+                <div class="text-center group relative">
+                    <p class="text-xs font-semibold text-editorial-accent mb-2 tracking-widest uppercase">10 Años</p>
+                    <p id="val-10y" class="font-mono text-2xl md:text-3xl font-bold text-editorial-navy transition-colors">0.00%</p>
+                    <div class="absolute -bottom-6 left-1/2 transform -translate-x-1/2 w-1 h-1 bg-editorial-accent rounded-full"></div>
+                </div>
+                <!-- 30Y -->
+                <div class="text-center group">
+                    <p class="text-xs font-medium text-editorial-muted mb-2 tracking-widest uppercase">30 Años</p>
+                    <p id="val-30y" class="font-mono text-2xl md:text-3xl text-editorial-text transition-colors group-hover:text-editorial-navy">0.00%</p>
+                </div>
+            </div>
+
+            <!-- Gráfico de la Curva -->
+            <div class="relative w-full h-[380px]">
+                <canvas id="mainCurveChart"></canvas>
+            </div>
+        </section>
+
+        <!-- Columna Derecha: Conclusión Editorial (4/12) -->
+        <aside class="lg:col-span-4 border-l border-editorial-line pl-0 lg:pl-12 flex flex-col">
+            
+            <div class="mb-10">
+                <p class="text-[10px] font-semibold tracking-[0.2em] text-editorial-muted uppercase mb-3 border-b border-editorial-line pb-2 inline-block">
+                    Diagnóstico Estructural
+                </p>
+                <h2 id="curve-status" class="font-serif text-3xl text-editorial-navy mb-4">
+                    Ascendente
+                </h2>
+                <p id="curve-desc" class="font-sans text-sm text-editorial-text leading-relaxed">
+                    Descripción de la curva...
+                </p>
+            </div>
+
+            <div class="mt-auto space-y-6">
+                <p class="text-[10px] font-semibold tracking-[0.2em] text-editorial-muted uppercase mb-2 border-b border-editorial-line pb-2">
+                    Diferenciales de Rendimiento (Spreads)
+                </p>
+                
+                <div class="flex justify-between items-baseline">
+                    <span class="font-sans text-sm text-editorial-muted">Spread 10Y &minus; 3M</span>
+                    <span id="spread-10y" class="font-mono text-lg font-medium text-editorial-green">+0.00 pp</span>
+                </div>
+                
+                <div class="flex justify-between items-baseline">
+                    <span class="font-sans text-sm text-editorial-muted">Spread 30Y &minus; 3M</span>
+                    <span id="spread-30y" class="font-mono text-lg font-medium text-editorial-green">+0.00 pp</span>
+                </div>
+                
+                <p class="text-xs text-editorial-muted font-light mt-4 italic">
+                    Un spread negativo indica que el costo del dinero a corto plazo supera al de largo plazo (inversión).
+                </p>
+            </div>
+
+        </aside>
+    </main>
+
+    <!-- SECCIÓN HISTÓRICA -->
+    <section class="border-t border-editorial-line pt-12 mb-16">
+        <header class="mb-8 flex flex-col md:flex-row justify-between items-end gap-4">
+            <div>
+                <h3 class="font-serif text-2xl text-editorial-navy mb-1">Evolución de plazos clave</h3>
+                <p class="font-sans text-sm text-editorial-muted">Trayectoria histórica de rendimientos a 3 meses, 10 años y 30 años.</p>
+            </div>
+            
+            <!-- Leyenda limpia -->
+            <div class="flex gap-6 font-sans text-xs font-medium text-editorial-text">
+                <div class="flex items-center gap-2"><span class="w-4 h-[2px] bg-editorial-accent"></span> 3 Meses</div>
+                <div class="flex items-center gap-2"><span class="w-4 h-[2px] bg-editorial-navy"></span> 10 Años (Benchmark)</div>
+                <div class="flex items-center gap-2"><span class="w-4 h-[2px] bg-editorial-blue"></span> 30 Años</div>
+            </div>
+        </header>
+
+        <div class="relative w-full h-[300px]">
+            <canvas id="historicalChart"></canvas>
+        </div>
+    </section>
+
+    <!-- FOOTER Y METODOLOGÍA -->
+    <footer class="mt-auto border-t border-editorial-line pt-8 pb-12 flex flex-col md:flex-row justify-between items-start gap-8 font-sans">
+        <div class="max-w-xl">
+            <p class="text-[10px] font-semibold tracking-[0.15em] text-editorial-muted uppercase mb-2">Fuente Oficial</p>
+            <p class="text-xs text-editorial-text mb-1">U.S. Department of the Treasury &mdash; Daily Treasury Par Yield Curve Rates.</p>
+            <p class="text-xs text-editorial-muted italic">Elaboración propia con base en observaciones de cierre de período.</p>
+        </div>
+        <div class="max-w-md md:text-right">
+            <p class="text-[10px] font-semibold tracking-[0.15em] text-editorial-muted uppercase mb-2">Te amo Fram</p>
+            <p class="text-xs text-editorial-muted leading-relaxed">
+                        </div>
+    </footer>
+
+    <script>
+        // --- 1. BASE DE DATOS EXACTA Y REVISADA ---
+        const periods = ['2019', '2020', '2021', '2022', '2023', '2024', '2025', 'Marzo 2026'];
+        const maturities = ['3 Meses', '1 Año', '5 Años', '10 Años', '30 Años'];
+        
+        const db = {
+            '2019': { 
+                yields: [1.55, 1.59, 1.69, 1.92, 2.39], 
+                type: "Ascendente", 
+                desc: "Curva ascendente.", 
+                date: "31 Dic 2019" 
+            },
+            '2020': { 
+                yields: [0.09, 0.10, 0.36, 0.93, 1.65], 
+                type: "Ascendente", 
+                desc: "Curva ascendente con rendimientos muy bajos tras el shock de COVID-19.", 
+                date: "31 Dic 2020" 
+            },
+            '2021': { 
+                yields: [0.06, 0.39, 1.26, 1.52, 1.90], 
+                type: "Ascendente", 
+                desc: "Curva ascendente y mayor pendiente, en un contexto de recuperación económica.", 
+                date: "31 Dic 2021" 
+            },
+            '2022': { 
+                yields: [4.42, 4.41, 3.96, 4.14, 3.97], 
+                type: "Invertida", 
+                desc: "Curva invertida por el rápido aumento de las tasas de corto plazo.", 
+                date: "30 Dic 2022" 
+            },
+            '2023': { 
+                yields: [5.40, 4.79, 3.84, 3.88, 4.03], 
+                type: "Invertida", 
+                desc: "Mayor inversión de las observaciones seleccionadas: spread 10Y–3M de −1.52 pp.", 
+                date: "29 Dic 2023" 
+            },
+            '2024': { 
+                yields: [4.37, 4.16, 4.58, 4.58, 4.78], 
+                type: "Mixta", 
+                desc: "Tramo corto invertido entre 3M y 1Y, seguido de una pendiente ascendente hacia los vencimientos largos.", 
+                date: "31 Dic 2024" 
+            },
+            '2025': { 
+                yields: [3.67, 3.48, 3.73, 4.18, 4.84], 
+                type: "Ascendente", 
+                desc: "Pendiente positiva más marcada, especialmente hacia 30 años.", 
+                date: "31 Dic 2025" 
+            },
+            'Marzo 2026': { 
+                yields: [3.70, 3.68, 3.92, 4.30, 4.88], 
+                type: "Ascendente", 
+                desc: "Curva ascendente, con spread 10Y–3M de +0.60 pp y 30Y–3M de +1.18 pp.", 
+                date: "31 Mar 2026" 
+            }
+        };
+
+        // --- 2. VARIABLES DE ESTADO Y GRÁFICOS ---
+        let currentYearId = '2019';
+        let mainChartObj = null;
+        let histChartObj = null;
+
+        // Configuraciones globales de Chart.js para estilo editorial
+        Chart.defaults.font.family = '"Inter", sans-serif';
+        Chart.defaults.color = '#667085';
+        Chart.defaults.scale.grid.color = '#E6E6E1';
+
+        // --- 3. INICIALIZACIÓN ---
+        function initDashboard() {
+            buildTimeline();
+            initCharts();
+            selectPeriod('2019');
+        }
+
+        // --- STREAMING_CHUNK:Logic for navigation and data binding... ---
+        function buildTimeline() {
+            const container = document.getElementById('timeline-container');
+            periods.forEach(year => {
+                const li = document.createElement('li');
+                li.className = 'nav-year';
+                li.innerText = year.toUpperCase();
+                li.dataset.year = year;
+                li.onclick = () => selectPeriod(year);
+                container.appendChild(li);
+            });
+        }
+
+        function formatSpread(value) {
+            const fixed = Math.abs(value).toFixed(2);
+            // Uso de símbolo de resta tipográfico exacto (&minus; / −)
+            if (value < 0) return `−${fixed} pp`;
+            return `+${fixed} pp`;
+        }
+
+        function triggerFadeAnimation(elements) {
+            elements.forEach(el => {
+                el.classList.remove('fade-update');
+                void el.offsetWidth; // Trigger reflow
+                el.classList.add('fade-update');
+            });
+        }
+
+        function selectPeriod(year) {
+            currentYearId = year;
+            const data = db[year];
+            
+            // 1. UI Navegación
+            document.querySelectorAll('.nav-year').forEach(el => {
+                el.classList.toggle('active', el.dataset.year === year);
+            });
+
+            // 2. Textos Editoriales
+            document.getElementById('header-date').innerText = data.date;
+            
+            const statusEl = document.getElementById('curve-status');
+            statusEl.innerText = data.type;
+            
+            // Colores estrictos para la conclusión editorial
+            if (data.type === "Invertida") {
+                statusEl.className = "font-serif text-3xl text-editorial-red mb-4";
+            } else if (data.type === "Mixta") {
+                statusEl.className = "font-serif text-3xl text-editorial-accent mb-4";
+            } else {
+                statusEl.className = "font-serif text-3xl text-editorial-navy mb-4";
+            }
+
+            document.getElementById('curve-desc').innerText = data.desc;
+
+            // 3. Ruta de Números Protagonistas
+            const ids = ['val-3m', 'val-1y', 'val-5y', 'val-10y', 'val-30y'];
+            ids.forEach((id, idx) => {
+                const el = document.getElementById(id);
+                el.innerText = data.yields[idx].toFixed(2) + '%';
+            });
+            triggerFadeAnimation(ids.map(id => document.getElementById(id)));
+
+            // 4. Cálculos Matemáticos Exactos de Spreads
+            const sp10 = data.yields[3] - data.yields[0];
+            const sp30 = data.yields[4] - data.yields[0];
+
+            const sp10El = document.getElementById('spread-10y');
+            const sp30El = document.getElementById('spread-30y');
+            
+            sp10El.innerText = formatSpread(sp10);
+            sp30El.innerText = formatSpread(sp30);
+            
+            sp10El.className = `font-mono text-lg font-medium ${sp10 < 0 ? 'text-editorial-red' : 'text-editorial-green'}`;
+            sp30El.className = `font-mono text-lg font-medium ${sp30 < 0 ? 'text-editorial-red' : 'text-editorial-green'}`;
+
+            triggerFadeAnimation([sp10El, sp30El, statusEl, document.getElementById('curve-desc')]);
+
+            // 5. Actualizar Gráfico Principal
+            if (mainChartObj) {
+                mainChartObj.data.datasets[0].data = data.yields;
+                // Cambio sutil de color de línea si está invertida
+                const lineColor = data.type === 'Invertida' ? '#A63737' : '#1F3A5F';
+                mainChartObj.data.datasets[0].borderColor = lineColor;
+                mainChartObj.data.datasets[0].pointBorderColor = lineColor;
+                mainChartObj.update();
+            }
+
+            // 6. Sincronizar marcador en Gráfico Histórico
+            if (histChartObj) {
+                const index = periods.indexOf(year);
+                histChartObj.data.datasets.forEach(dataset => {
+                    dataset.pointRadius = periods.map((_, i) => i === index ? 6 : 0);
+                    dataset.pointBorderWidth = periods.map((_, i) => i === index ? 3 : 0);
+                });
+                histChartObj.update();
+            }
+        }
+
+        // --- STREAMING_CHUNK:Initializing Chart.js instances... ---
+        function initCharts() {
+            // 1. GRÁFICO PRINCIPAL (Editorial y minimalista)
+            const ctxMain = document.getElementById('mainCurveChart').getContext('2d');
+            mainChartObj = new Chart(ctxMain, {
+                type: 'line',
+                data: {
+                    labels: maturities,
+                    datasets: [{
+                        label: 'Rendimiento',
+                        data: db['2019'].yields,
+                        borderColor: '#1F3A5F', // Navy
+                        borderWidth: 1.5,
+                        pointBackgroundColor: '#F7F7F5',
+                        pointBorderColor: '#1F3A5F',
+                        pointBorderWidth: 2,
+                        pointRadius: 5,
+                        pointHoverRadius: 8,
+                        pointHoverBackgroundColor: '#1F3A5F',
+                        pointHoverBorderColor: '#F7F7F5',
+                        fill: false,
+                        tension: 0 // Estricto, sin suavizado
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: { duration: 600, easing: 'easeOutQuart' },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: '#172033',
+                            titleFont: { family: '"Inter", sans-serif', size: 11, weight: '500' },
+                            bodyFont: { family: '"JetBrains Mono", monospace', size: 14, weight: 'bold' },
+                            padding: 12,
+                            cornerRadius: 2,
+                            displayColors: false,
+                            callbacks: {
+                                label: (context) => context.parsed.y.toFixed(2) + '%'
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            min: 0,
+                            max: 6,
+                            grid: { color: '#E6E6E1', drawBorder: false, borderDash: [4, 4] },
+                            ticks: { font: { family: '"JetBrains Mono", monospace', size: 10 }, padding: 10, callback: v => v.toFixed(1) + '%' }
+                        },
+                        x: {
+                            grid: { display: false, drawBorder: false },
+                            ticks: { display: false } // Oculto el texto X porque ya está en los números grandes arriba
+                        }
+                    },
+                    interaction: { mode: 'index', intersect: false }
+                }
+            });
+
+            // 2. GRÁFICO HISTÓRICO
+            const ctxHist = document.getElementById('historicalChart').getContext('2d');
+            const data3M = periods.map(p => db[p].yields[0]);
+            const data10Y = periods.map(p => db[p].yields[3]);
+            const data30Y = periods.map(p => db[p].yields[4]);
+
+            histChartObj = new Chart(ctxHist, {
+                type: 'line',
+                data: {
+                    labels: periods,
+                    datasets: [
+                        { label: '3 Meses', data: data3M, borderColor: '#B38B59', borderWidth: 1.5, tension: 0, pointBackgroundColor: '#F7F7F5' }, // Accent
+                        { label: '10 Años', data: data10Y, borderColor: '#1F3A5F', borderWidth: 2.5, tension: 0, pointBackgroundColor: '#F7F7F5' }, // Navy (Benchmark)
+                        { label: '30 Años', data: data30Y, borderColor: '#56728F', borderWidth: 1.5, tension: 0, pointBackgroundColor: '#F7F7F5' }  // Soft Blue
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: '#ffffff',
+                            titleColor: '#172033',
+                            bodyColor: '#172033',
+                            borderColor: '#E6E6E1',
+                            borderWidth: 1,
+                            cornerRadius: 2,
+                            bodyFont: { family: '"JetBrains Mono", monospace' }
+                        }
+                    },
+                    scales: {
+                        y: { 
+                            min: 0, max: 6, 
+                            grid: { color: '#E6E6E1', drawBorder: false, borderDash: [4, 4] }, 
+                            ticks: { font: { family: '"JetBrains Mono", monospace', size: 10 }, padding: 10, callback: v => v + '%' } 
+                        },
+                        x: { 
+                            grid: { display: false }, 
+                            ticks: { font: { family: '"Inter", sans-serif', size: 11 } } 
+                        }
+                    }
+                }
+            });
+        }
+
+        // Start
+        window.onload = initDashboard;
+    </script>
+</body>
+</html>
